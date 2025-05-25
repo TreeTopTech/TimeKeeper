@@ -2,6 +2,8 @@ import React, { useEffect, useState, createContext } from 'react';
 import { Tabs } from 'expo-router';
 import { useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+const THEME_KEY = 'theme_preference';
 export const ThemeContext = createContext({
   theme: 'light',
   setTheme: (themeValue: 'light' | 'dark') => {},
@@ -14,6 +16,12 @@ export default function ApplicationLayout() {
   useEffect(() => {
     setCurrentTheme(deviceColorScheme === 'dark' ? 'dark' : 'light');
   }, [deviceColorScheme]);
+  useEffect(() => {
+    (async () => {
+      const storedTheme = await AsyncStorage.getItem(THEME_KEY);
+      if (storedTheme === 'dark' || storedTheme === 'light') setCurrentTheme(storedTheme);
+    })();
+  }, []);
   const getTabBarIconName = (routeName: string): keyof typeof Ionicons.glyphMap => {
     switch (routeName) {
       case 'home':
@@ -52,7 +60,8 @@ export default function ApplicationLayout() {
             tabBarIcon: createAddWeekTabIcon,
           }}
         />
-        <Tabs.Screen name="edit-week" options={{ href: null }} />
+        <Tabs.Screen name="edit-week" options={{ href: null}} />
+        <Tabs.Screen name="weekUtils" options={{ href: null}} />
       </Tabs>
     </ThemeContext.Provider>
   );

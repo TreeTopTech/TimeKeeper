@@ -230,6 +230,31 @@ export default function EditWeekScreen() {
     );
   }
 
+  const handleClearDayEntry = (dayIndex: number) => {
+    const updatedEntries = [...weekTimeEntries];
+    updatedEntries[dayIndex] = {
+      ...updatedEntries[dayIndex],
+      startTime: '',
+      finishTime: '',
+      lunchMinutes: 0,
+      notes: '',
+      paidTimeOffHours: undefined,
+      ptoHours: undefined,
+      isAnnualLeave: false,
+    };
+    setWeekTimeEntries(updatedEntries);
+
+    const updatedLunchInputs = [...lunchDurationInputs];
+    updatedLunchInputs[dayIndex] = '';
+    setLunchDurationInputs(updatedLunchInputs);
+
+    const updatedPtoInputs = [...paidTimeOffInputs];
+    updatedPtoInputs[dayIndex] = '';
+    setPaidTimeOffInputs(updatedPtoInputs);
+
+    setWeekSummaryText(calculateWeekSummary(updatedEntries, updatedPtoInputs));
+  };
+
   return (
     <View style={[styles.container, { backgroundColor }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -272,10 +297,11 @@ export default function EditWeekScreen() {
               setPaidTimeOffInputs(newInputs);
               setWeekSummaryText(calculateWeekSummary(weekTimeEntries, newInputs));
             }}
+            onClearDay={handleClearDayEntry}
           />
         ))}
 
-        <Text style={[styles.summaryText, { color: textColor }]}>{weekSummaryText}</Text>
+        <Text style={[styles.summaryText, { color: textColor }]}>Total hours: {weekSummaryText}</Text>
 
         <Button title="Save Week" onPress={handleSaveWeekData} />
       </ScrollView>
@@ -311,6 +337,7 @@ interface DayEntryFormProps {
   onTimeFieldPress: (dayIndex: number, field: 'startTime' | 'finishTime') => void;
   onLunchAdjustment: (dayIndex: number, adjustment: number) => void;
   onPaidTimeOffChange: (newInputs: string[]) => void;
+  onClearDay: (dayIndex: number) => void;
 }
 
 function DayEntryFormComponent({
@@ -323,6 +350,7 @@ function DayEntryFormComponent({
   onTimeFieldPress,
   onLunchAdjustment,
   onPaidTimeOffChange,
+  onClearDay,
 }: DayEntryFormProps) {
   return (
     <View style={styles.dayEntryContainer}>
@@ -347,6 +375,15 @@ function DayEntryFormComponent({
           accessibilityLabel={`Select finish time for ${dayLabel}`}
         >
           <Text style={{ color: textColor }}>{entry.finishTime || 'Finish'}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.timeInputField, { borderColor: '#FF3B30', backgroundColor: '#fff' }]}
+          onPress={() => onClearDay(dayIndex)}
+          accessibilityRole="button"
+          accessibilityLabel={`Clear all for ${dayLabel}`}
+        >
+          <Text style={{ color: '#FF3B30' }}>Clear</Text>
         </TouchableOpacity>
       </View>
 

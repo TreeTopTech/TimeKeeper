@@ -1,6 +1,10 @@
 import React, { useContext } from 'react';
 import { View, Text, StyleSheet, Switch } from 'react-native';
 import { ThemeContext } from './_layout';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const THEME_KEY = 'theme_preference';
+
 export default function SettingsScreen() {
   const { theme, setTheme } = useContext(ThemeContext);
   const isDarkMode = theme === 'dark';
@@ -8,8 +12,9 @@ export default function SettingsScreen() {
   const textColor = isDarkMode ? '#fff' : '#222';
   const thumbColor = isDarkMode ? '#fff' : '#222';
   const trackColorOptions = { false: '#ccc', true: '#444' };
-  const handleDarkModeToggle = (isDarkModeEnabled: boolean) => {
+  const handleDarkModeToggle = async (isDarkModeEnabled: boolean) => {
     setTheme(isDarkModeEnabled ? 'dark' : 'light');
+    await AsyncStorage.setItem(THEME_KEY, isDarkModeEnabled ? 'dark' : 'light');
   };
   return (
     <View style={[styles.container, { backgroundColor }]}> 

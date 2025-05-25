@@ -25,6 +25,13 @@ import {
   prepareWeekInputs,
   calculateWeekSummary,
 } from '../utils/weekUtils';
+
+export interface AddWeekTimeEntry extends TimeEntry {
+  paidTimeOffHours?: number;
+  ptoHours?: number;
+  isAnnualLeave?: boolean;
+}
+
 export default function AddWeekScreen() {
   const routeParams = useLocalSearchParams();
   const router = useRouter();
@@ -34,7 +41,7 @@ export default function AddWeekScreen() {
     : getMondayOfWeek(new Date());
   const [selectedWeekDate, setSelectedWeekDate] = useState(initialWeekDate);
   const [isWeekPickerVisible, setIsWeekPickerVisible] = useState(false);
-  const [weekTimeEntries, setWeekTimeEntries] = useState<TimeEntry[]>([]);
+  const [weekTimeEntries, setWeekTimeEntries] = useState<AddWeekTimeEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [weekSummary, setWeekSummary] = useState('');
   const [lunchHourInputs, setLunchHourInputs] = useState<string[]>([]);
@@ -42,6 +49,27 @@ export default function AddWeekScreen() {
   const [timePickerState, setTimePickerState] = useState<TimePicker>({ dayIndex: -1, field: null });
   const [isTimePickerVisible, setIsTimePickerVisible] = useState(false);
   const [timePickerValue, setTimePickerValue] = useState<Date>(new Date());
+
+  // --- Modern lunch and PTO adjustment handlers ---
+  const updateLunchMinutes = (dayIndex: number, adjustment: number) => {
+    const updatedEntries = [...weekTimeEntries];
+    const newMinutes = Math.max(0, (updatedEntries[dayIndex].lunchMinutes || 0) + adjustment);
+    updatedEntries[dayIndex].lunchMinutes = newMinutes;
+    setWeekTimeEntries(updatedEntries);
+    setLunchHourInputs((prev: string[]) => {
+      const arr = [...prev];
+      arr[dayIndex] = (newMinutes / 60).toFixed(2);
+      return arr;
+    });
+    setWeekSummary(calculateWeekSummary(updatedEntries, paidTimeOffInputs));
+  };
+  const updatePaidTimeOffInput = (dayIndex: number, value: string) => {
+    const updatedInputs = [...paidTimeOffInputs];
+    updatedInputs[dayIndex] = value;
+    setPaidTimeOffInputs(updatedInputs);
+    setWeekSummary(calculateWeekSummary(weekTimeEntries, updatedInputs));
+  };
+
   useEffect(() => {
     if (routeParams.week) {
       setSelectedWeekDate(getMondayOfWeek(new Date(routeParams.week as string)));
@@ -53,7 +81,17 @@ export default function AddWeekScreen() {
   const initializeWeekData = async (weekDate: Date) => {
     setIsLoading(true);
     const weekDates = generateWeekDates(weekDate);
-    const emptyWeekEntries = createEmptyWeekEntries(weekDates);
+    const emptyWeekEntries: AddWeekTimeEntry[] = weekDates.map((date) => ({
+      id: date,
+      date,
+      startTime: '',
+      finishTime: '',
+      lunchMinutes: 0,
+      notes: '',
+      paidTimeOffHours: undefined,
+      ptoHours: undefined,
+      isAnnualLeave: false,
+    }));
     setWeekTimeEntries(emptyWeekEntries);
     const { lunchHourInputs, paidTimeOffInputs } = prepareWeekInputs(emptyWeekEntries);
     setLunchHourInputs(lunchHourInputs);
@@ -75,7 +113,7 @@ export default function AddWeekScreen() {
     Alert.alert('Added', 'New week created.');
     router.replace('/home');
   };
-  const processWeekEntries = (entries: TimeEntry[], ptoInputs: string[]): TimeEntry[] => {
+  const processWeekEntries = (entries: AddWeekTimeEntry[], ptoInputs: string[]): AddWeekTimeEntry[] => {
     return entries.map((entry, entryIndex) => {
       const ptoString = ptoInputs[entryIndex];
       let ptoValue: number | undefined = undefined;
@@ -124,7 +162,7 @@ export default function AddWeekScreen() {
   };
   const updateTimeEntry = (
     dayIndex: number,
-    field: keyof TimeEntry | 'isAnnualLeave' | 'paidTimeOffHours',
+    field: keyof AddWeekTimeEntry,
     value: string | boolean,
   ) => {
     const updatedEntries = [...weekTimeEntries];
@@ -136,19 +174,20 @@ export default function AddWeekScreen() {
         ? (value as string).split(',').map((tag) => tag.trim())
         : [];
     } else if (field === 'isAnnualLeave') {
-      (updatedEntries[dayIndex] as any).isAnnualLeave = value;
+      updatedEntries[dayIndex].isAnnualLeave = value as boolean;
       if (!value) {
-        (updatedEntries[dayIndex] as any).paidTimeOffHours = undefined;
+        updatedEntries[dayIndex].paidTimeOffHours = undefined;
+        updatedEntries[dayIndex].ptoHours = undefined;
         updatedPtoInputs[dayIndex] = '';
       }
-    } else if (field === 'paidTimeOffHours') {
+    } else if (field === 'paidTimeOffHours' || field === 'ptoHours') {
       if (typeof value === 'string') {
-        (updatedEntries[dayIndex] as any).paidTimeOffHours =
-          value === '' || value === '.' ? value : parseFloat(value);
+        const parsed = value === '' || value === '.' ? undefined : parseFloat(value);
+        updatedEntries[dayIndex][field] = parsed;
         updatedPtoInputs[dayIndex] = value;
-      } else {
-        (updatedEntries[dayIndex] as any).paidTimeOffHours = value;
-        updatedPtoInputs[dayIndex] = value ? String(value) : '';
+      } else if (typeof value === 'number' || value === undefined) {
+        updatedEntries[dayIndex][field] = value;
+        updatedPtoInputs[dayIndex] = value !== undefined ? String(value) : '';
       }
     } else if (field === 'startTime' || field === 'finishTime' || field === 'notes') {
       updatedEntries[dayIndex][field] = value as string;
@@ -176,8 +215,8 @@ export default function AddWeekScreen() {
             startTime: mondayEntry.startTime,
             finishTime: mondayEntry.finishTime,
             lunchMinutes: mondayEntry.lunchMinutes,
-            paidTimeOffHours: (mondayEntry as any).paidTimeOffHours,
-            isAnnualLeave: (mondayEntry as any).isAnnualLeave,
+            paidTimeOffHours: mondayEntry.paidTimeOffHours,
+            isAnnualLeave: mondayEntry.isAnnualLeave,
           },
     );
     const filledLunchInputs = lunchHourInputs.map((value, dayIndex) =>
@@ -191,6 +230,31 @@ export default function AddWeekScreen() {
     setPaidTimeOffInputs(filledPtoInputs);
     setWeekSummary(calculateWeekSummary(filledEntries, filledPtoInputs));
   };
+  const handleClearDayEntry = (dayIndex: number) => {
+    const updatedEntries = [...weekTimeEntries];
+    updatedEntries[dayIndex] = {
+      ...updatedEntries[dayIndex],
+      startTime: '',
+      finishTime: '',
+      lunchMinutes: 0,
+      notes: '',
+      paidTimeOffHours: undefined,
+      ptoHours: undefined,
+      isAnnualLeave: false,
+    };
+    setWeekTimeEntries(updatedEntries);
+
+    const updatedLunchInputs = [...lunchHourInputs];
+    updatedLunchInputs[dayIndex] = '';
+    setLunchHourInputs(updatedLunchInputs);
+
+    const updatedPtoInputs = [...paidTimeOffInputs];
+    updatedPtoInputs[dayIndex] = '';
+    setPaidTimeOffInputs(updatedPtoInputs);
+
+    setWeekSummary(calculateWeekSummary(updatedEntries, updatedPtoInputs));
+  };
+
   if (isLoading) {
     return <Text>Loading...</Text>;
   }
@@ -202,9 +266,7 @@ export default function AddWeekScreen() {
         style={[styles.container, { backgroundColor: 'transparent' }]}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
-        <Text style={[styles.title, { color: theme === 'dark' ? '#fff' : '#222' }]}>
-          Add New Week
-        </Text>
+        <Text style={[styles.title, { color: theme === 'dark' ? '#fff' : '#222' }]}>Add New Week</Text>
         <TouchableOpacity
           onPress={() => setIsWeekPickerVisible(true)}
           style={styles.weekPickerButton}
@@ -224,33 +286,35 @@ export default function AddWeekScreen() {
           />
         )}
         {weekTimeEntries.map((entry, dayIndex) => (
-          <DayEntryForm
-            key={entry.date}
-            entry={entry}
-            dayIndex={dayIndex}
-            dayLabel={WEEKDAY_LABELS[dayIndex]}
-            lunchHours={lunchHourInputs[dayIndex]}
-            paidTimeOffHours={paidTimeOffInputs[dayIndex]}
-            onTimeFieldPress={openTimePicker}
-            onFieldChange={updateTimeEntry}
-            onLunchChange={updateLunchHours}
-          />
+          <React.Fragment key={entry.date}>
+            <DayEntryFormModern
+              entry={entry}
+              dayIndex={dayIndex}
+              dayLabel={WEEKDAY_LABELS[dayIndex]}
+              lunchMinutes={entry.lunchMinutes}
+              paidTimeOffHours={paidTimeOffInputs[dayIndex]}
+              onTimeFieldPress={openTimePicker}
+              onLunchAdjustment={updateLunchMinutes}
+              onPaidTimeOffChange={updatePaidTimeOffInput}
+              theme={theme}
+              onClearDay={handleClearDayEntry}
+            />
+            {/* Show Fill Down button directly after Monday if conditions met */}
+            {dayIndex === 0 && shouldShowFillDownButton(weekTimeEntries) && (
+              <TouchableOpacity
+                style={styles.fillDownButton}
+                onPress={fillDownMondayValues}
+                accessibilityRole="button"
+              >
+                <Text style={styles.fillDownButtonText}>Fill Down from Monday</Text>
+              </TouchableOpacity>
+            )}
+          </React.Fragment>
         ))}
-        {shouldShowFillDownButton(weekTimeEntries) && (
-          <TouchableOpacity
-            style={styles.fillDownButton}
-            onPress={fillDownMondayValues}
-            accessibilityRole="button"
-          >
-            <Text style={styles.fillDownButtonText}>Fill Down</Text>
-          </TouchableOpacity>
-        )}
-        <View style={styles.summaryContainer}>
-          <Text style={[styles.summaryText, { color: theme === 'dark' ? '#fff' : '#222' }]}>
-            Total hours: {weekSummary}
-          </Text>
-          <Button title="Add Week" onPress={handleSaveWeek} />
-        </View>
+        <Text style={[styles.summaryText, { color: theme === 'dark' ? '#fff' : '#222' }]}>
+          Total hours: {weekSummary}
+        </Text>
+        <Button title="Add Week" onPress={handleSaveWeek} />
       </ScrollView>
       <DateTimePickerModal
         isVisible={isTimePickerVisible}
@@ -294,7 +358,7 @@ const DayEntryForm: React.FC<DayEntryFormProps> = ({
   onFieldChange,
   onLunchChange,
 }) => {
-  const isAnnualLeave = (entry as any).isAnnualLeave || false;
+  const isAnnualLeave = entry.isAnnualLeave || false;
   const lunchValue = lunchHours !== undefined && lunchHours !== '' ? parseFloat(lunchHours) : 0;
   return (
     <View style={styles.dayBlock}>
@@ -454,25 +518,41 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 24,
+    marginBottom: 20,
+    textAlign: 'center',
   },
   weekPickerButton: {
     marginBottom: 16,
-    padding: 10,
-    backgroundColor: '#e0e0e0',
+    padding: 12,
+    backgroundColor: '#007AFF',
     borderRadius: 8,
+    alignItems: 'center',
   },
   weekPickerText: {
-    textAlign: 'center',
     fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  fillDownButton: {
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#28a745',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  fillDownButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   dayBlock: {
-    marginBottom: 18,
-    padding: 10,
+    marginBottom: 20,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
     borderRadius: 8,
-    backgroundColor: '#f5f5f5',
   },
   dayLabel: {
     fontSize: 16,
@@ -481,45 +561,42 @@ const styles = StyleSheet.create({
   },
   timeFieldsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
   },
   timeField: {
-    width: 90,
-    height: 36,
-    justifyContent: 'center',
+    flex: 1,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#ccc',
     borderRadius: 4,
-    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 40,
+    borderColor: '#ccc',
   },
   lunchControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 8,
-    flex: 1,
+    marginBottom: 8,
+    gap: 8,
   },
   lunchButton: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    backgroundColor: '#007AFF',
+    borderRadius: 16,
     alignItems: 'center',
-    backgroundColor: '#e0e0e0',
-    borderRadius: 12,
+    justifyContent: 'center',
   },
   lunchButtonText: {
+    color: '#fff',
     fontSize: 18,
-    lineHeight: 24,
-    color: '#333',
+    fontWeight: 'bold',
   },
   lunchInput: {
     flex: 1,
-    height: 36,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 4,
-    paddingHorizontal: 8,
     textAlign: 'center',
-    color: '#222',
+    fontSize: 14,
   },
   hoursLabel: {
     marginLeft: 4,
@@ -527,23 +604,20 @@ const styles = StyleSheet.create({
   paidTimeOffRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    gap: 8,
   },
   paidTimeOffLabel: {
-    marginRight: 8,
-  },
-  picker: {
-    width: 100,
-    height: 36,
+    fontSize: 14,
+    fontWeight: '500',
   },
   paidTimeOffInput: {
-    width: 90,
-    height: 36,
+    flex: 1,
+    padding: 8,
     borderWidth: 1,
-    borderColor: '#ccc',
     borderRadius: 4,
-    paddingHorizontal: 8,
-    marginLeft: 8,
+    fontSize: 14,
+    textAlign: 'center',
+    borderColor: '#ccc',
   },
   notesInput: {
     flex: 1,
@@ -556,25 +630,111 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     marginTop: 4,
   },
-  fillDownButton: {
-    alignSelf: 'flex-end',
-    marginBottom: 8,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  fillDownButtonText: {
-    fontWeight: 'bold',
-  },
-  summaryContainer: {
-    marginTop: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   summaryText: {
-    fontWeight: 'bold',
-    fontSize: 18,
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginVertical: 16,
+    padding: 12,
+    backgroundColor: 'rgba(0, 122, 255, 0.1)',
+    borderRadius: 8,
+  },
+  picker: {
+    width: 100,
+    height: 36,
   },
 });
+
+interface DayEntryFormModernProps {
+  entry: TimeEntry;
+  dayIndex: number;
+  dayLabel: string;
+  lunchMinutes: number;
+  paidTimeOffHours: string;
+  onTimeFieldPress: (
+    dayIndex: number,
+    field: 'startTime' | 'finishTime',
+    currentValue: string,
+  ) => void;
+  onLunchAdjustment: (dayIndex: number, adjustment: number) => void;
+  onPaidTimeOffChange: (dayIndex: number, value: string) => void;
+  theme: string;
+  onClearDay: (dayIndex: number) => void;
+}
+const DayEntryFormModern: React.FC<DayEntryFormModernProps> = ({
+  entry,
+  dayIndex,
+  dayLabel,
+  lunchMinutes,
+  paidTimeOffHours,
+  onTimeFieldPress,
+  onLunchAdjustment,
+  onPaidTimeOffChange,
+  theme,
+  onClearDay,
+}) => {
+  const textColor = theme === 'dark' ? '#fff' : '#222';
+  return (
+    <View style={styles.dayBlock}>
+      <Text style={[styles.dayLabel, { color: textColor }]}> {dayLabel} ({entry.date}) </Text>
+      <View style={styles.timeFieldsRow}>
+        <TouchableOpacity
+          style={[styles.timeField, { borderColor: '#ccc' }]}
+          onPress={() => onTimeFieldPress(dayIndex, 'startTime', entry.startTime)}
+          accessibilityRole="button"
+          accessibilityLabel={`Select start time for ${dayLabel}`}
+        >
+          <Text style={{ color: textColor }}>{entry.startTime || 'Start'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.timeField, { borderColor: '#ccc' }]}
+          onPress={() => onTimeFieldPress(dayIndex, 'finishTime', entry.finishTime)}
+          accessibilityRole="button"
+          accessibilityLabel={`Select finish time for ${dayLabel}`}
+        >
+          <Text style={{ color: textColor }}>{entry.finishTime || 'Finish'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.timeField, { borderColor: '#FF3B30', backgroundColor: '#fff' }]}
+          onPress={() => onClearDay(dayIndex)}
+          accessibilityRole="button"
+          accessibilityLabel={`Clear all for ${dayLabel}`}
+          activeOpacity={1}
+        >
+          <Text style={{ color: '#FF3B30' }}>Clear</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.lunchControls}>
+        <TouchableOpacity
+          style={styles.lunchButton}
+          onPress={() => onLunchAdjustment(dayIndex, -15)}
+          accessibilityLabel={`Decrease lunch for ${dayLabel}`}
+          disabled={lunchMinutes <= 0}
+        >
+          <Text style={styles.lunchButtonText}>-</Text>
+        </TouchableOpacity>
+        <Text style={[styles.lunchInput, { color: textColor, borderWidth: 0 }]}>{lunchMinutes}min</Text>
+        <TouchableOpacity
+          style={styles.lunchButton}
+          onPress={() => onLunchAdjustment(dayIndex, 15)}
+          accessibilityLabel={`Increase lunch for ${dayLabel}`}
+          disabled={lunchMinutes >= 240}
+        >
+          <Text style={styles.lunchButtonText}>+</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.paidTimeOffRow}>
+        <Text style={[styles.paidTimeOffLabel, { color: textColor }]}>PTO Hours:</Text>
+        <TextInput
+          style={[styles.paidTimeOffInput, { color: textColor }]}
+          value={paidTimeOffHours || ''}
+          onChangeText={(val) => onPaidTimeOffChange(dayIndex, val)}
+          placeholder="0"
+          placeholderTextColor="#999"
+          keyboardType="numeric"
+          accessibilityLabel="Paid time off hours"
+        />
+      </View>
+    </View>
+  );
+};

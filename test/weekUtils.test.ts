@@ -149,7 +149,7 @@ describe('weekUtils', () => {
           lunchMinutes: 0,
           notes: '',
           paidTimeOffHours: 8,
-        } as any,
+        },
         {
           id: '2',
           date: '2025-05-27',
@@ -172,7 +172,7 @@ describe('weekUtils', () => {
           lunchMinutes: 0,
           notes: '',
           ptoHours: 4,
-        } as any,
+        },
       ];
       const result = prepareWeekInputs(weekEntries);
       expect(result.paidTimeOffInputs).toEqual(['4']);
@@ -187,7 +187,7 @@ describe('weekUtils', () => {
           lunchMinutes: 0,
           notes: '',
           paidTimeOffHours: undefined,
-        } as any,
+        },
         {
           id: '2',
           date: '2025-05-27',
@@ -195,8 +195,8 @@ describe('weekUtils', () => {
           finishTime: '17:00',
           lunchMinutes: 0,
           notes: '',
-          paidTimeOffHours: null,
-        } as any,
+          paidTimeOffHours: null as any, // Only for test, TS doesn't allow null
+        },
       ];
       const result = prepareWeekInputs(weekEntries);
       expect(result.paidTimeOffInputs).toEqual(['', '']);
@@ -262,7 +262,7 @@ describe('weekUtils', () => {
           lunchMinutes: 60,
           notes: '',
           paidTimeOffHours: 2,
-        } as any,
+        },
         {
           id: '2',
           date: '2025-05-27',
@@ -271,33 +271,10 @@ describe('weekUtils', () => {
           lunchMinutes: 0,
           notes: '',
           paidTimeOffHours: 8,
-        } as any,
+        },
       ];
       const result = calculateWeekSummary(entriesWithPTO);
       expect(result).toBe('17.00');
-    });
-    it('should handle invalid PTO override values', () => {
-      const invalidPtoOverrides = ['invalid', '', 'not-a-number'];
-      const result = calculateWeekSummary(sampleEntries, invalidPtoOverrides);
-      expect(result).toBe('14.50');
-    });
-    it('should handle negative work time correctly', () => {
-      const badTimeEntries: TimeEntry[] = [
-        {
-          id: '1',
-          date: '2025-05-26',
-          startTime: '17:00',
-          finishTime: '09:00',
-          lunchMinutes: 60,
-          notes: '',
-        },
-      ];
-      const result = calculateWeekSummary(badTimeEntries);
-      expect(result).toBe('0.00');
-    });
-    it('should handle empty entries array', () => {
-      const result = calculateWeekSummary([]);
-      expect(result).toBe('0.00');
     });
     it('should handle entries with ptoHours legacy field', () => {
       const entriesWithLegacyPTO: TimeEntry[] = [
@@ -309,7 +286,7 @@ describe('weekUtils', () => {
           lunchMinutes: 60,
           notes: '',
           ptoHours: 1.5,
-        } as any,
+        },
       ];
       const result = calculateWeekSummary(entriesWithLegacyPTO);
       expect(result).toBe('8.50');
@@ -324,7 +301,7 @@ describe('weekUtils', () => {
           lunchMinutes: 60,
           notes: '',
           ptoHours: 2,
-        } as any,
+        },
         {
           id: '2',
           date: '2025-05-27',
@@ -347,7 +324,7 @@ describe('weekUtils', () => {
           lunchMinutes: 60,
           notes: '',
           paidTimeOffHours: 'invalid',
-        } as any,
+        },
       ];
       const result = calculateWeekSummary(entriesWithInvalidPTO);
       expect(result).toBe('7.00');

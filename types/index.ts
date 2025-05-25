@@ -8,7 +8,8 @@ export interface TimeEntry {
   notes?: string;
   tags?: string[];
   isAnnualLeave?: boolean;
-  paidTimeOffHours?: number;
+  paidTimeOffHours?: number | string;
+  ptoHours?: number | string;
 }
 export interface Settings {
   workPattern: WorkPattern;

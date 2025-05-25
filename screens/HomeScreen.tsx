@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Button, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Button, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Storage } from '../storage/Storage';
 import { calculateWorkedHours } from '../utils/timeUtils';
@@ -9,139 +9,162 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { ThemeContext } from '../app/_layout';
 
+function getCurrentMondayKey(): string {
+  const now = new Date();
+  const day = now.getDay();
+  const diff = now.getDate() - ((day + 6) % 7);
+  const monday = new Date(now.setDate(diff));
+  return monday.toISOString().slice(0, 10);
+}
+
+function groupEntriesByWeek(entries: TimeEntry[]): Record<string, TimeEntry[]> {
+  const weekGroups: Record<string, TimeEntry[]> = {};
+  entries.forEach(entry => {
+    const mondayKey = generateWeekKey(new Date(entry.date));
+    if (!weekGroups[mondayKey]) weekGroups[mondayKey] = [];
+    weekGroups[mondayKey].push(entry);
+  });
+  return weekGroups;
+}
+
+function createWeekSummaries(weekGroupings: Record<string, TimeEntry[]>): WeekSummary[] {
+  return Object.entries(weekGroupings)
+    .map(([mondayKey, entries]) => {
+      const mondayDate = new Date(mondayKey);
+      const dateRange = formatWeekDateRange(mondayDate);
+      const totalHours = calculateWeekTotalHours(entries);
+      return {
+        mondayDate: mondayKey,
+        dateRange,
+        entries,
+        totalHours,
+      };
+    })
+    .sort((a, b) => b.mondayDate.localeCompare(a.mondayDate));
+}
+
+function calculateWeekTotalHours(entries: TimeEntry[]): number {
+  return entries.reduce((sum, entry) => {
+    let worked = calculateWorkedHours(entry);
+    let pto = 0;
+    const entryPto = entry.paidTimeOffHours ?? entry.ptoHours;
+    if (typeof entryPto === 'number') {
+      pto = entryPto;
+    } else if (typeof entryPto === 'string' && entryPto !== '') {
+      const parsed = parseFloat(entryPto);
+      if (!isNaN(parsed)) pto = parsed;
+    }
+    return sum + worked + pto;
+  }, 0);
+}
+
+function calculateSelectedWeeksTotalHours(weekSummaries: WeekSummary[], selectedWeekKeys: string[]): number {
+  return weekSummaries
+    .filter(week => selectedWeekKeys.includes(week.mondayDate))
+    .reduce((sum, week) => sum + week.totalHours, 0);
+}
+
+function generateWeekKey(date: Date): string {
+  const mondayDate = getMondayOfWeek(date);
+  return mondayDate.toISOString().slice(0, 10);
+}
+
+function formatWeekDateRange(mondayDate: Date): string {
+  const fridayDate = new Date(mondayDate);
+  fridayDate.setDate(mondayDate.getDate() + 4);
+  return `${mondayDate.toISOString().slice(0, 10)} - ${fridayDate.toISOString().slice(0, 10)}`;
+}
+
+function generateWeekDatesList(mondayDate: Date): string[] {
+  return Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(mondayDate);
+    d.setDate(mondayDate.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
 const HomeScreen = () => {
   const router = useRouter();
   const { theme } = useContext(ThemeContext);
   const [weekSummaries, setWeekSummaries] = useState<WeekSummary[]>([]);
   const [selectedWeekKeys, setSelectedWeekKeys] = useState<string[]>([]);
   const [totalSelectedHours, setTotalSelectedHours] = useState(0);
+  const currentMondayKey = getCurrentMondayKey();
 
   useFocusEffect(
     React.useCallback(() => {
       loadWeekSummaries();
-    }, []),
+    }, [])
   );
 
   useEffect(() => {
-    calculateSelectedWeeksTotalHours();
+    setTotalSelectedHours(calculateSelectedWeeksTotalHours(weekSummaries, selectedWeekKeys));
   }, [selectedWeekKeys, weekSummaries]);
 
-  const loadWeekSummaries = async () => {
+  async function loadWeekSummaries() {
     const timeEntries = await Storage.getEntries();
     const weekGroupings = groupEntriesByWeek(timeEntries);
     const summaries = createWeekSummaries(weekGroupings);
     setWeekSummaries(summaries);
-  };
+  }
 
-  const groupEntriesByWeek = (entries: TimeEntry[]): Record<string, TimeEntry[]> => {
-    const weekGroups: Record<string, TimeEntry[]> = {};
-
-    entries.forEach((entry) => {
-      const mondayKey = generateWeekKey(new Date(entry.date));
-      if (!weekGroups[mondayKey]) {
-        weekGroups[mondayKey] = [];
-      }
-      weekGroups[mondayKey].push(entry);
-    });
-
-    return weekGroups;
-  };
-
-  const createWeekSummaries = (weekGroupings: Record<string, TimeEntry[]>): WeekSummary[] => {
-    return Object.entries(weekGroupings)
-      .map(([mondayKey, entries]) => {
-        const mondayDate = new Date(mondayKey);
-        const dateRange = formatWeekDateRange(mondayDate);
-        const totalHours = calculateWeekTotalHours(entries);
-
-        return {
-          mondayDate: mondayKey,
-          dateRange,
-          entries,
-          totalHours,
-        };
-      })
-      .sort((first, second) => second.mondayDate.localeCompare(first.mondayDate));
-  };
-
-  const calculateWeekTotalHours = (entries: TimeEntry[]): number => {
-    return entries.reduce((total, entry) => {
-      let workedHours = calculateWorkedHours(entry);
-      let paidTimeOffHours = 0;
-
-      const entryPto = (entry as any).paidTimeOffHours || (entry as any).ptoHours;
-      if (typeof entryPto === 'number') {
-        paidTimeOffHours = entryPto;
-      } else if (typeof entryPto === 'string' && entryPto !== '') {
-        const parsedPto = parseFloat(entryPto);
-        if (!isNaN(parsedPto)) paidTimeOffHours = parsedPto;
-      }
-
-      return total + workedHours + paidTimeOffHours;
-    }, 0);
-  };
-
-  const calculateSelectedWeeksTotalHours = () => {
-    const selectedTotal = weekSummaries
-      .filter((week) => selectedWeekKeys.includes(week.mondayDate))
-      .reduce((total, week) => total + week.totalHours, 0);
-    setTotalSelectedHours(selectedTotal);
-  };
-
-  const handleAddWeek = () => {
+  function handleAddWeek() {
     const nextAvailableWeek = findNextAvailableWeek();
-    router.push({
-      pathname: '/new-week',
-      params: { week: nextAvailableWeek },
-    });
-  };
+    router.push({ pathname: '/new-week', params: { week: nextAvailableWeek } });
+  }
 
-  const findNextAvailableWeek = (): string => {
-    const existingWeekKeys = new Set(weekSummaries.map((week) => week.mondayDate));
+  function findNextAvailableWeek(): string {
+    const existingWeekKeys = new Set(weekSummaries.map(week => week.mondayDate));
     let candidateMonday = getMondayOfWeek(new Date());
     let candidateKey = candidateMonday.toISOString().slice(0, 10);
-
     while (existingWeekKeys.has(candidateKey)) {
       candidateMonday.setDate(candidateMonday.getDate() + 7);
       candidateKey = candidateMonday.toISOString().slice(0, 10);
     }
-
     return candidateKey;
-  };
+  }
 
-  const handleEditWeek = (mondayKey: string) => {
-    router.push({
-      pathname: '/edit-week',
-      params: { week: mondayKey },
-    });
-  };
+  function handleEditWeek(mondayKey: string) {
+    router.push({ pathname: '/edit-week', params: { week: mondayKey } });
+  }
 
-  const handleDeleteWeek = async (mondayKey: string) => {
-    const allEntries = await Storage.getEntries();
-    const weekDates = generateWeekDatesList(new Date(mondayKey));
-    const filteredEntries = allEntries.filter((entry) => !weekDates.includes(entry.date));
-
-    await Storage.saveEntries(filteredEntries);
-    setWeekSummaries(weekSummaries.filter((week) => week.mondayDate !== mondayKey));
-    setSelectedWeekKeys(selectedWeekKeys.filter((key) => key !== mondayKey));
-  };
-
-  const handleToggleWeekSelection = (mondayKey: string) => {
-    setSelectedWeekKeys((currentSelection) =>
-      currentSelection.includes(mondayKey)
-        ? currentSelection.filter((key) => key !== mondayKey)
-        : [...currentSelection, mondayKey],
+  function handleDeleteWeek(mondayKey: string) {
+    Alert.alert(
+      'Delete Week',
+      'Are you sure you want to delete this week?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const allEntries = await Storage.getEntries();
+            const weekDates = generateWeekDatesList(new Date(mondayKey));
+            const filteredEntries = allEntries.filter(entry => !weekDates.includes(entry.date));
+            await Storage.saveEntries(filteredEntries);
+            setWeekSummaries(weekSummaries.filter(week => week.mondayDate !== mondayKey));
+            setSelectedWeekKeys(selectedWeekKeys.filter(key => key !== mondayKey));
+          },
+        },
+      ],
+      { cancelable: true }
     );
-  };
+  }
+
+  function handleToggleWeekSelection(mondayKey: string) {
+    setSelectedWeekKeys(currentSelection =>
+      currentSelection.includes(mondayKey)
+        ? currentSelection.filter(key => key !== mondayKey)
+        : [...currentSelection, mondayKey]
+    );
+  }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme === 'dark' ? '#222' : '#fff' }]}>
+    <View style={[styles.container, { backgroundColor: theme === 'dark' ? '#222' : '#fff' }]}> 
       <Text style={[styles.title, { color: theme === 'dark' ? '#fff' : '#222' }]}>Weeks</Text>
-
       <Button title="Add Week" onPress={handleAddWeek} />
-
       <ScrollView style={styles.weeksList}>
-        {weekSummaries.map((week) => (
+        {weekSummaries.map(week => (
           <WeekRow
             key={week.mondayDate}
             week={week}
@@ -149,13 +172,11 @@ const HomeScreen = () => {
             onToggleSelection={handleToggleWeekSelection}
             onEdit={handleEditWeek}
             onDelete={handleDeleteWeek}
+            isCurrentWeek={week.mondayDate === currentMondayKey}
           />
         ))}
       </ScrollView>
-
-      <Text style={[styles.totalHours, { color: theme === 'dark' ? '#fff' : '#222' }]}>
-        Total (selected): {totalSelectedHours.toFixed(2)} h
-      </Text>
+      <Text style={[styles.totalHours, { color: theme === 'dark' ? '#fff' : '#222' }]}>Total (selected): {totalSelectedHours.toFixed(2)} h</Text>
     </View>
   );
 };
@@ -166,16 +187,11 @@ interface WeekRowProps {
   onToggleSelection: (mondayKey: string) => void;
   onEdit: (mondayKey: string) => void;
   onDelete: (mondayKey: string) => void;
+  isCurrentWeek?: boolean;
 }
 
-const WeekRow: React.FC<WeekRowProps> = ({
-  week,
-  isSelected,
-  onToggleSelection,
-  onEdit,
-  onDelete,
-}) => (
-  <View style={styles.weekRow}>
+const WeekRow: React.FC<WeekRowProps> = ({ week, isSelected, onToggleSelection, onEdit, onDelete, isCurrentWeek }) => (
+  <View style={[styles.weekRow, isCurrentWeek ? styles.currentWeekBorder : null]}>
     <TouchableOpacity
       onPress={() => onToggleSelection(week.mondayDate)}
       style={styles.checkbox}
@@ -188,51 +204,16 @@ const WeekRow: React.FC<WeekRowProps> = ({
         <Ionicons name="square-outline" size={24} color="#aaa" />
       )}
     </TouchableOpacity>
-
     <Text style={styles.weekLabel}>{week.dateRange}</Text>
-
-    <Text style={styles.hours}>{week.totalHours.toFixed(2)} h</Text>
-
-    <TouchableOpacity
-      onPress={() => onEdit(week.mondayDate)}
-      accessibilityLabel="Edit week"
-      style={styles.iconButton}
-    >
+    <TouchableOpacity onPress={() => onEdit(week.mondayDate)} accessibilityLabel="Edit week" style={styles.iconButton}>
       <Ionicons name="create-outline" size={22} color="#007AFF" />
     </TouchableOpacity>
-
-    <TouchableOpacity
-      onPress={() => onDelete(week.mondayDate)}
-      accessibilityLabel="Delete week"
-      style={styles.iconButton}
-    >
+    <Text style={styles.hours}>{week.totalHours.toFixed(2)} h</Text>
+    <TouchableOpacity onPress={() => onDelete(week.mondayDate)} accessibilityLabel="Delete week" style={styles.iconButton}>
       <Ionicons name="trash-outline" size={22} color="#FF3B30" />
     </TouchableOpacity>
   </View>
 );
-
-function generateWeekKey(date: Date): string {
-  const mondayDate = getMondayOfWeek(date);
-  return mondayDate.toISOString().slice(0, 10);
-}
-
-function formatWeekDateRange(mondayDate: Date): string {
-  const fridayDate = new Date(mondayDate);
-  fridayDate.setDate(mondayDate.getDate() + 4);
-
-  const startDateString = mondayDate.toISOString().slice(0, 10);
-  const endDateString = fridayDate.toISOString().slice(0, 10);
-
-  return `${startDateString} - ${endDateString}`;
-}
-
-function generateWeekDatesList(mondayDate: Date): string[] {
-  return Array.from({ length: 5 }, (_, dayIndex) => {
-    const currentDay = new Date(mondayDate);
-    currentDay.setDate(mondayDate.getDate() + dayIndex);
-    return currentDay.toISOString().slice(0, 10);
-  });
-}
 
 const styles = StyleSheet.create({
   container: {
@@ -280,6 +261,10 @@ const styles = StyleSheet.create({
   },
   checkbox: {
     marginRight: 8,
+  },
+  currentWeekBorder: {
+    borderWidth: 2,
+    borderColor: '#007AFF',
   },
 });
 
