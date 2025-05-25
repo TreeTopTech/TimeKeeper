@@ -1,39 +1,44 @@
 import { TimeEntry } from '../types';
-
-export function getWorkedHours(entry: TimeEntry): number {
-  const [startH, startM] = entry.startTime.split(':').map(Number);
-  const [endH, endM] = entry.finishTime.split(':').map(Number);
-  const start = startH * 60 + startM;
-  const end = endH * 60 + endM;
-  const totalMinutes = end - start - entry.lunchMinutes;
-  return Math.max(0, totalMinutes / 60);
+export function calculateWorkedHours(entry: TimeEntry): number {
+  if (!entry.startTime || !entry.finishTime) return 0;
+  const startMinutes = parseTimeToMinutes(entry.startTime);
+  const endMinutes = parseTimeToMinutes(entry.finishTime);
+  const workedMinutes = endMinutes - startMinutes - entry.lunchMinutes;
+  return Math.max(0, workedMinutes / 60);
 }
-
-export function getWorkedMinutes(entry: TimeEntry): number {
-  const [startH, startM] = entry.startTime.split(':').map(Number);
-  const [endH, endM] = entry.finishTime.split(':').map(Number);
-  const start = startH * 60 + startM;
-  const end = endH * 60 + endM;
-  return Math.max(0, end - start - entry.lunchMinutes);
+export function calculateWorkedMinutes(entry: TimeEntry): number {
+  if (!entry.startTime || !entry.finishTime) return 0;
+  const startMinutes = parseTimeToMinutes(entry.startTime);
+  const endMinutes = parseTimeToMinutes(entry.finishTime);
+  return Math.max(0, endMinutes - startMinutes - entry.lunchMinutes);
 }
-
-export function getTotalHours(entries: TimeEntry[]): number {
-  return entries.reduce((sum, e) => sum + getWorkedHours(e), 0);
+export function calculateTotalHours(entries: TimeEntry[]): number {
+  return entries.reduce((total, entry) => total + calculateWorkedHours(entry), 0);
 }
-
-export function getEntriesForPeriod(entries: TimeEntry[], startDate: string, endDate: string): TimeEntry[] {
-  return entries.filter((e) => e.date >= startDate && e.date <= endDate);
+export function filterEntriesForPeriod(
+  entries: TimeEntry[],
+  startDate: string,
+  endDate: string,
+): TimeEntry[] {
+  return entries.filter((entry) => entry.date >= startDate && entry.date <= endDate);
 }
-
-export function getPeriodDates(pattern: 'weekly' | 'fortnightly', refDate: string): { start: string; end: string } {
-  const d = new Date(refDate);
-  const day = d.getDay();
-  const start = new Date(d);
-  start.setDate(d.getDate() - ((day + 6) % 7));
-  const end = new Date(start);
-  end.setDate(start.getDate() + (pattern === 'weekly' ? 6 : 13));
+export function calculatePeriodDates(
+  pattern: 'weekly' | 'fortnightly',
+  referenceDate: string,
+): { start: string; end: string } {
+  const date = new Date(referenceDate);
+  const dayOfWeek = date.getDay();
+  const startDate = new Date(date);
+  startDate.setDate(date.getDate() - ((dayOfWeek + 6) % 7));
+  const endDate = new Date(startDate);
+  const daysToAdd = pattern === 'weekly' ? 6 : 13;
+  endDate.setDate(startDate.getDate() + daysToAdd);
   return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
+    start: startDate.toISOString().slice(0, 10),
+    end: endDate.toISOString().slice(0, 10),
   };
+}
+function parseTimeToMinutes(timeString: string): number {
+  const [hours, minutes] = timeString.split(':').map(Number);
+  return hours * 60 + minutes;
 }

@@ -1,9 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TimeEntry, Settings } from '../types';
-
 const ENTRIES_KEY = 'time_entries';
 const SETTINGS_KEY = 'settings';
-
 export const Storage = {
   async getEntries(): Promise<TimeEntry[]> {
     const json = await AsyncStorage.getItem(ENTRIES_KEY);
@@ -20,4 +18,3 @@ export const Storage = {
     await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   },
 };
-
