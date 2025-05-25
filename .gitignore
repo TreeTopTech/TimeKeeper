@@ -1,0 +1,61 @@
+# Node modules
+node_modules/
+
+# Expo/React Native
+.expo/
+.expo-shared/
+dist/
+build/
+web-build/
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Android build
+android/
+
+# iOS build (if ejected)
+ios/build/
+ios/Pods/
+ios/Podfile.lock
+
+# Misc
+*.log
+*.tmp
+*.swp
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+
+# Test/coverage
+coverage/
+
+# Expo Go QR codes
+*.expo-go
+
+# IDE
+.idea/
+
+# Others
+*.keystore
+*.jks
+
+# Ignore generated assets
+*.apk
+*.aab
+
+# Ignore system files
+Thumbs.db
+app.json
