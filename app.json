@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "TimeKeeper",
+    "slug": "timekeeper",
+    "version": "1.0.0",
+    "sdkVersion": "53.0.0",
+    "platforms": ["ios", "android", "web"],
+    "icon": "./icon.png",
+    "android": {
+      "package": "com.timdev8.timekeeper"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "999b78d4-436e-4ba8-a658-0eacfda6e61c"
+      }
+    }
+  }
+}
